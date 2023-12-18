@@ -1,6 +1,8 @@
 import PyPDF2
 import re
 import sqlite3
+import spacy
+from spacy.matcher import Matcher
 
 # Fonction pour extraire les informations du CV PDF
 def extraire_informations_cv_pdf(chemin_cv_pdf):
@@ -39,6 +41,37 @@ def extraire_informations_cv_pdf(chemin_cv_pdf):
 
     return informations
 
+def extraire_informations_cv(texte):
+    nlp = spacy.load("fr_core_news_sm")
+    matcher = Matcher(nlp.vocab)
+
+    matcher.add("NOM", [[{"POS": "PROPN"}]])
+    matcher.add("PRENOMS", [[{"POS": "PROPN"}]])
+    matcher.add("EMAIL", [[{"TEXT": {"REGEX": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"} }]])
+    matcher.add("TEL", [[{"TEXT": {"REGEX": r"\b(?:0|\\225|00225)[1-9][0-9]{8}\b"} }]])
+    matcher.add("COMPETENCE", [[{"TEXT": {"REGEX": "[a-zA-Z0-9._%+-]+[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"} }]])
+    matcher.add("FORMATION", [[{"TEXT": {"REGEX": "[a-zA-Z0-9._%+-]+[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"} }]])
+
+    doc = nlp(texte)
+
+    informations = {"Nom": "", "Prenoms": "", "Email": "", "Téléphone": "", "Compétence": "", "Formation": ""}
+
+    for match_id, start, end in matcher(doc):
+        if match_id == nlp.vocab.strings["NOM"]:
+            informations["Nom"] = doc[start:end].text
+        if match_id == nlp.vocab.strings["PRENOMS"]:
+            informations["Prenoms"] = doc[start:end].text
+        elif match_id == nlp.vocab.strings["EMAIL"]:
+            informations["Email"] = doc[start:end].text
+        elif match_id == nlp.vocab.strings["TEL"]:
+            informations["Téléphone"] = doc[start:end].text
+        elif match_id == nlp.vocab.strings["COMPETENCE"]:
+            informations["Compétence"] = doc[start:end].text
+        elif match_id == nlp.vocab.strings["FORMATION"]:
+            informations["Formation"] = doc[start:end].text
+
+    return informations
+
 def initialiser_base_de_donnees():
     conn = sqlite3.connect("cvdb.db")
     cursor = conn.cursor()
@@ -67,7 +100,7 @@ def inserer_dans_base_de_donnees(informations):
 
     # Insérer les informations du candidat dans la table "Candidats"
     cursor.execute("INSERT INTO Candidats (Nom, Prenom, Email, Telephone, Competence, Formation) VALUES (?, ?, ?, ?, ?, ?)",
-                   (informations['Nom'], informations['Prenom'], informations['Email'], informations['Telephone'], informations['Competence'], informations['Formation']))
+                   (informations['Nom'], informations['Prenoms'], informations['Email'], informations['Téléphone'], informations['Compétence'], informations['Formation']))
     conn.commit()
 
     # Récupérer l'ID du candidat inséré
@@ -82,7 +115,7 @@ def inserer_dans_base_de_donnees(informations):
 
 # Exemple d'utilisation
 chemin_du_cv_pdf = "CV_N'DAH ETCHIAN ARNAUD-JOSE.pdf"
-informations_cv_pdf = extraire_informations_cv_pdf(chemin_du_cv_pdf)
+informations_cv_pdf = extraire_informations_cv(chemin_du_cv_pdf)
 initialiser_base_de_donnees()
 inserer_dans_base_de_donnees(informations_cv_pdf)
 print(informations_cv_pdf)
